@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.open.spring.mvc.person.Person;
+import com.open.spring.mvc.person.PersonDetailsService;
 import com.open.spring.mvc.person.PersonJpaRepository;
 
 import lombok.AllArgsConstructor;
@@ -35,6 +36,11 @@ public class GroupsApiController {
 
     @Autowired
     private PersonJpaRepository personRepository;
+    @Autowired
+    private FlaskPersonaService flaskPersonaService;
+
+    @Autowired
+    private PersonDetailsService personDetailsService;
 
     // ===== DTOs =====
     @Data
@@ -61,6 +67,16 @@ public class GroupsApiController {
     @AllArgsConstructor
     public static class BulkGroupCreateDto {
         private List<GroupCreateDto> groups;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class FormPersonasRequest {
+        private List<String> userUids;
+        private Integer groupSize;
+        private String period;
+        private String course;
     }
 
     // ===== Helper Methods =====
@@ -442,6 +458,79 @@ public class GroupsApiController {
             groupsRepository.save(group);
 
             return new ResponseEntity<>(buildGroupResponse(group), HttpStatus.OK);
+        } catch (Exception e) {
+            return new ResponseEntity<>(
+                Map.of("error", e.getMessage()),
+                HttpStatus.BAD_REQUEST
+            );
+        }
+    }
+    
+    /**
+     * POST /api/groups/form-with-personas
+     * Form groups using persona-based matching from Flask
+     */
+    
+    @PostMapping("/form-with-personas")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> formGroupsWithPersonas(
+            @RequestBody FormPersonasRequest request) {
+        try {
+            // Step 1: Call Flask to get optimal groupings
+            List<Map<String, Object>> flaskGroups = flaskPersonaService.formGroups(
+                request.getUserUids(),
+                request.getGroupSize()
+            );
+            
+            if (flaskGroups == null) {
+                return new ResponseEntity<>(
+                    Map.of("error", "Failed to contact Flask persona service"),
+                    HttpStatus.INTERNAL_SERVER_ERROR
+                );
+            }
+            
+            // Step 2: Create each group in Spring database
+            List<Map<String, Object>> createdGroups = new ArrayList<>();
+            
+            for (int i = 0; i < flaskGroups.size(); i++) {
+                Map<String, Object> flaskGroup = flaskGroups.get(i);
+                List<String> memberUids = (List<String>) flaskGroup.get("user_uids");
+                Double teamScore = ((Number) flaskGroup.get("team_score")).doubleValue();
+                
+                // Create group
+                Groups group = new Groups();
+                group.setName(String.format("Group %d (Persona Score: %.1f)", i + 1, teamScore));
+                group.setPeriod(request.getPeriod());
+                group.setCourse(request.getCourse());
+                Groups savedGroup = groupsRepository.save(group);
+                
+                // Add members (map UID -> Person)
+                for (String uid : memberUids) {
+                    Person person = personDetailsService.getByUid(uid);
+                    if (person != null) {
+                        savedGroup.addPerson(person);
+                    }
+                }
+                
+                savedGroup = groupsRepository.save(savedGroup);
+                createdGroups.add(buildGroupResponse(savedGroup));
+            }
+            
+            // Calculate average score
+            double avgScore = flaskGroups.stream()
+                .mapToDouble(g -> ((Number) g.get("team_score")).doubleValue())
+                .average()
+                .orElse(0.0);
+            
+            return new ResponseEntity<>(
+                Map.of(
+                    "groups", createdGroups,
+                    "message", "Groups formed using persona matching",
+                    "average_score", Math.round(avgScore * 100.0) / 100.0
+                ),
+                HttpStatus.CREATED
+            );
+            
         } catch (Exception e) {
             return new ResponseEntity<>(
                 Map.of("error", e.getMessage()),

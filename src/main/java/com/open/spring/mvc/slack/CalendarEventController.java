@@ -291,4 +291,108 @@ public class CalendarEventController {
                     .body(null);
         }
     }
+
+    /**
+     * DTO for bulk delete request
+     */
+    @Getter
+    @Setter
+    public static class BulkDeleteRequest {
+        private List<String> titles;
+    }
+
+    /**
+     * DTO for single delete by title request
+     */
+    @Getter
+    @Setter
+    public static class DeleteByTitleRequest {
+        private String title;
+    }
+
+    /**
+     * DTO for bulk delete response
+     */
+    @Getter
+    @Setter
+    public static class BulkDeleteResponse {
+        private boolean success;
+        private int deleted;
+        private int notFound;
+        private List<String> errors;
+
+        public BulkDeleteResponse() {
+            this.errors = new ArrayList<>();
+        }
+    }
+
+    /**
+     * DELETE /api/calendar/delete_events
+     * Bulk delete calendar events by titles
+     * Accepts { titles: ["...", "..."] }
+     */
+    @DeleteMapping("/delete_events")
+    public ResponseEntity<BulkDeleteResponse> deleteEvents(@RequestBody BulkDeleteRequest request) {
+        BulkDeleteResponse response = new BulkDeleteResponse();
+
+        if (request.getTitles() == null || request.getTitles().isEmpty()) {
+            response.setSuccess(false);
+            response.getErrors().add("No titles provided");
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        for (String title : request.getTitles()) {
+            try {
+                if (title == null || title.trim().isEmpty()) {
+                    response.setNotFound(response.getNotFound() + 1);
+                    continue;
+                }
+
+                boolean deleted = calendarEventService.deleteEventByTitle(title.trim());
+                if (deleted) {
+                    response.setDeleted(response.getDeleted() + 1);
+                } else {
+                    response.setNotFound(response.getNotFound() + 1);
+                }
+            } catch (Exception e) {
+                response.getErrors().add("Error deleting: " + title + " - " + e.getMessage());
+            }
+        }
+
+        response.setSuccess(response.getErrors().isEmpty());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * DELETE /api/calendar/delete_event
+     * Delete a single calendar event by title
+     * Accepts { title: "..." }
+     */
+    @DeleteMapping("/delete_event")
+    public ResponseEntity<Map<String, Object>> deleteEventByTitle(@RequestBody DeleteByTitleRequest request) {
+        Map<String, Object> response = new HashMap<>();
+
+        if (request.getTitle() == null || request.getTitle().trim().isEmpty()) {
+            response.put("success", false);
+            response.put("message", "Title cannot be null or empty");
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        try {
+            boolean deleted = calendarEventService.deleteEventByTitle(request.getTitle().trim());
+            if (deleted) {
+                response.put("success", true);
+                response.put("message", "Event deleted successfully");
+                return ResponseEntity.ok(response);
+            } else {
+                response.put("success", false);
+                response.put("message", "Event not found with title: " + request.getTitle());
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            }
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("message", "Error deleting event: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
 }

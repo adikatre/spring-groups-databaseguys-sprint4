@@ -504,15 +504,20 @@ public class GroupsApiController {
                 group.setCourse(request.getCourse());
                 Groups savedGroup = groupsRepository.save(group);
                 
-                // Add members (map UID -> Person)
+                // ALTERNATIVE: Use native SQL to insert members directly
+                // This bypasses the hashCode() issue completely
                 for (String uid : memberUids) {
                     Person person = personDetailsService.getByUid(uid);
                     if (person != null) {
-                        savedGroup.addPerson(person);
+                        // Direct SQL insert into join table
+                        groupsRepository.addPersonToGroupDirect(savedGroup.getId(), person.getId());
+                    } else {
+                        System.err.println("WARNING: Could not find person with UID: " + uid);
                     }
                 }
                 
-                savedGroup = groupsRepository.save(savedGroup);
+                // Reload to get members
+                savedGroup = groupsRepository.findById(savedGroup.getId()).orElse(savedGroup);
                 createdGroups.add(buildGroupResponse(savedGroup));
             }
             
@@ -532,6 +537,7 @@ public class GroupsApiController {
             );
             
         } catch (Exception e) {
+            e.printStackTrace();
             return new ResponseEntity<>(
                 Map.of("error", e.getMessage()),
                 HttpStatus.BAD_REQUEST

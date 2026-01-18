@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -49,4 +50,8 @@ public interface GroupsJpaRepository extends JpaRepository<Groups, Long> {
     // Search groups by name with members eagerly loaded
     @Query("SELECT DISTINCT g FROM Groups g LEFT JOIN FETCH g.groupMembers WHERE LOWER(g.name) LIKE LOWER(CONCAT('%', :searchTerm, '%')) ORDER BY g.name")
     List<Groups> searchByNameWithMembers(@Param("searchTerm") String searchTerm);
+
+    @Modifying
+    @Query(value = "INSERT INTO group_members (group_id, person_id) VALUES (?1, ?2)", nativeQuery = true)
+    void addPersonToGroupDirect(Long groupId, Long personId);
 }

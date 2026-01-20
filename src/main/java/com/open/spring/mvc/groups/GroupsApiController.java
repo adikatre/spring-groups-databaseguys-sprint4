@@ -36,8 +36,6 @@ public class GroupsApiController {
 
     @Autowired
     private PersonJpaRepository personRepository;
-    @Autowired
-    private FlaskPersonaService flaskPersonaService;
 
     @Autowired
     private PersonDetailsService personDetailsService;
@@ -69,16 +67,6 @@ public class GroupsApiController {
         private List<GroupCreateDto> groups;
     }
 
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class FormPersonasRequest {
-        private List<String> userUids;
-        private Integer groupSize;
-        private String period;
-        private String course;
-    }
-
     // ===== Helper Methods =====
     private Map<String, Object> buildGroupResponse(Groups group) {
         Map<String, Object> groupMap = new LinkedHashMap<>();
@@ -105,9 +93,6 @@ public class GroupsApiController {
 
     // ===== GET Operations =====
 
-    /**
-     * GET /api/groups - Get all groups with their members
-     */
     @GetMapping
     @Transactional(readOnly = true)
     public ResponseEntity<List<Map<String, Object>>> getAllGroups() {
@@ -125,9 +110,6 @@ public class GroupsApiController {
         }
     }
 
-    /**
-     * GET /api/groups/{id} - Get a single group by ID with members
-     */
     @GetMapping("/{id}")
     @Transactional(readOnly = true)
     public ResponseEntity<Map<String, Object>> getGroupById(@PathVariable Long id) {
@@ -142,9 +124,6 @@ public class GroupsApiController {
         }
     }
 
-    /**
-     * GET /api/groups/person/{personId} - Get all groups containing a specific person
-     */
     @GetMapping("/person/{personId}")
     @Transactional(readOnly = true)
     public ResponseEntity<List<Map<String, Object>>> getGroupsByPersonId(@PathVariable Long personId) {
@@ -167,10 +146,6 @@ public class GroupsApiController {
         }
     }
 
-    /**
-     * GET /api/groups/search?name={searchTerm} - Search groups by name
-     * Returns a list of groups whose names contain the search term (case-insensitive)
-     */
     @GetMapping("/search")
     @Transactional(readOnly = true)
     public ResponseEntity<List<Map<String, Object>>> searchGroupsByName(
@@ -198,10 +173,6 @@ public class GroupsApiController {
 
     // ===== POST Operations =====
 
-    /**
-     * POST /api/groups - Create a new group with optional initial members
-     * Request body: { "name": "groupname", "period": "1", "memberIds": [1, 2, 3] }
-     */
     @PostMapping
     @Transactional
     public ResponseEntity<Map<String, Object>> createGroup(@RequestBody GroupCreateDto dto) {
@@ -220,15 +191,11 @@ public class GroupsApiController {
 
             Groups savedGroup = groupsRepository.save(group);
 
-            // Add members if provided
             if (dto.getMemberIds() != null) {
                 for (Long personId : dto.getMemberIds()) {
-                    Optional<Person> personOpt = personRepository.findById(personId);
-                    if (personOpt.isPresent()) {
-                        savedGroup.addPerson(personOpt.get());
-                    }
+                    groupsRepository.addPersonToGroupDirect(savedGroup.getId(), personId);
                 }
-                savedGroup = groupsRepository.save(savedGroup);
+                savedGroup = groupsRepository.findById(savedGroup.getId()).orElse(savedGroup);
             }
 
             return new ResponseEntity<>(buildGroupResponse(savedGroup), HttpStatus.CREATED);
@@ -240,11 +207,6 @@ public class GroupsApiController {
         }
     }
 
-
-    /**
-     * POST /api/groups/bulk - Bulk create multiple groups
-     * Request body: { "groups": [{ "name": "...", "period": "...", "memberIds": [...] }, ...] }
-     */
     @PostMapping("/bulk")
     @Transactional
     public ResponseEntity<Map<String, Object>> bulkCreateGroups(@RequestBody BulkGroupCreateDto dto) {
@@ -270,12 +232,9 @@ public class GroupsApiController {
 
                     if (groupDto.getMemberIds() != null) {
                         for (Long personId : groupDto.getMemberIds()) {
-                            Optional<Person> personOpt = personRepository.findById(personId);
-                            if (personOpt.isPresent()) {
-                                savedGroup.addPerson(personOpt.get());
-                            }
+                            groupsRepository.addPersonToGroupDirect(savedGroup.getId(), personId);
                         }
-                        savedGroup = groupsRepository.save(savedGroup);
+                        savedGroup = groupsRepository.findById(savedGroup.getId()).orElse(savedGroup);
                     }
 
                     created.add(buildGroupResponse(savedGroup));
@@ -301,10 +260,6 @@ public class GroupsApiController {
 
     // ===== PUT Operations =====
 
-    /**
-     * PUT /api/groups/{id} - Update group name and/or period
-     * Request body: { "name": "newname", "period": "2" }
-     */
     @PutMapping("/{id}")
     @Transactional
     public ResponseEntity<Map<String, Object>> updateGroup(
@@ -331,7 +286,6 @@ public class GroupsApiController {
                 group.setCourse(dto.getCourse());
             }
 
-
             Groups updatedGroup = groupsRepository.save(group);
             return new ResponseEntity<>(buildGroupResponse(updatedGroup), HttpStatus.OK);
         } catch (Exception e) {
@@ -344,8 +298,6 @@ public class GroupsApiController {
 
     // ===== DELETE Operations =====
 
-
-    
     @DeleteMapping("/{id}")
     public ResponseEntity<Map<String, Object>> deleteGroup (@PathVariable Long id) {
         try {
@@ -370,11 +322,6 @@ public class GroupsApiController {
         }
     }
 
-
-
-    /**
-     * DELETE /api/groups/{id}/members/{personId} - Remove a single person from a group
-     */
     @DeleteMapping("/{id}/members/{personId}")
     @Transactional
     public ResponseEntity<Map<String, Object>> removePersonFromGroup(
@@ -419,9 +366,6 @@ public class GroupsApiController {
         }
     }
 
-    /**
-     * POST /api/groups/{id}/members/{personId} - Add a single person to a group
-     */
     @PostMapping("/{id}/members/{personId}")
     @Transactional
     public ResponseEntity<Map<String, Object>> addPersonToGroup(
@@ -459,85 +403,6 @@ public class GroupsApiController {
 
             return new ResponseEntity<>(buildGroupResponse(group), HttpStatus.OK);
         } catch (Exception e) {
-            return new ResponseEntity<>(
-                Map.of("error", e.getMessage()),
-                HttpStatus.BAD_REQUEST
-            );
-        }
-    }
-    
-    /**
-     * POST /api/groups/form-with-personas
-     * Form groups using persona-based matching from Flask
-     */
-    
-    @PostMapping("/form-with-personas")
-    @Transactional
-    public ResponseEntity<Map<String, Object>> formGroupsWithPersonas(
-            @RequestBody FormPersonasRequest request) {
-        try {
-            // Step 1: Call Flask to get optimal groupings
-            List<Map<String, Object>> flaskGroups = flaskPersonaService.formGroups(
-                request.getUserUids(),
-                request.getGroupSize()
-            );
-            
-            if (flaskGroups == null) {
-                return new ResponseEntity<>(
-                    Map.of("error", "Failed to contact Flask persona service"),
-                    HttpStatus.INTERNAL_SERVER_ERROR
-                );
-            }
-            
-            // Step 2: Create each group in Spring database
-            List<Map<String, Object>> createdGroups = new ArrayList<>();
-            
-            for (int i = 0; i < flaskGroups.size(); i++) {
-                Map<String, Object> flaskGroup = flaskGroups.get(i);
-                List<String> memberUids = (List<String>) flaskGroup.get("user_uids");
-                Double teamScore = ((Number) flaskGroup.get("team_score")).doubleValue();
-                
-                // Create group
-                Groups group = new Groups();
-                group.setName(String.format("Group %d (Persona Score: %.1f)", i + 1, teamScore));
-                group.setPeriod(request.getPeriod());
-                group.setCourse(request.getCourse());
-                Groups savedGroup = groupsRepository.save(group);
-                
-                // ALTERNATIVE: Use native SQL to insert members directly
-                // This bypasses the hashCode() issue completely
-                for (String uid : memberUids) {
-                    Person person = personDetailsService.getByUid(uid);
-                    if (person != null) {
-                        // Direct SQL insert into join table
-                        groupsRepository.addPersonToGroupDirect(savedGroup.getId(), person.getId());
-                    } else {
-                        System.err.println("WARNING: Could not find person with UID: " + uid);
-                    }
-                }
-                
-                // Reload to get members
-                savedGroup = groupsRepository.findById(savedGroup.getId()).orElse(savedGroup);
-                createdGroups.add(buildGroupResponse(savedGroup));
-            }
-            
-            // Calculate average score
-            double avgScore = flaskGroups.stream()
-                .mapToDouble(g -> ((Number) g.get("team_score")).doubleValue())
-                .average()
-                .orElse(0.0);
-            
-            return new ResponseEntity<>(
-                Map.of(
-                    "groups", createdGroups,
-                    "message", "Groups formed using persona matching",
-                    "average_score", Math.round(avgScore * 100.0) / 100.0
-                ),
-                HttpStatus.CREATED
-            );
-            
-        } catch (Exception e) {
-            e.printStackTrace();
             return new ResponseEntity<>(
                 Map.of("error", e.getMessage()),
                 HttpStatus.BAD_REQUEST

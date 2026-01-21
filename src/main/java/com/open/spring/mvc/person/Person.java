@@ -21,6 +21,7 @@ import jakarta.persistence.CascadeType;
 
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import jakarta.persistence.Convert;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -149,6 +150,15 @@ public class Person extends Submitter implements Comparable<Person> {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private Map<String, Map<String, Object>> stats = new HashMap<>();
+
+    /**
+     * gradesJson stores this person's grades as a JSON blob in a TEXT column.
+     * Example entry: {"id":12345, "assignment":"hw1", "score":95.0, "course":"CS101", "submission":"..."}
+     * Persisted as TEXT to support SQLite; conversion handled by GradesJsonConverter.
+     */
+    @Convert(converter = GradesJsonConverter.class)
+    @Column(name = "gradesJson", columnDefinition = "text")
+    private List<Map<String, Object>> gradesJson = new ArrayList<>();
 
 
 //////////////////////////////////////////////////////////////////////////////////

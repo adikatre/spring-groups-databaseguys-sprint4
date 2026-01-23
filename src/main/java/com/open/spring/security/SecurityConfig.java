@@ -77,8 +77,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/person/create").permitAll()
                         // Admin-only endpoints, beware of DELETE operations and impact to cascading relational data 
                         .requestMatchers(HttpMethod.DELETE, "/api/person/**").hasAuthority("ROLE_ADMIN")
+<<<<<<< HEAD
                         .requestMatchers(HttpMethod.GET, "/api/person/uid/**").hasAnyAuthority("ROLE_STUDENT", "ROLE_TEACHER", "ROLE_ADMIN")
 
+=======
+                        .requestMatchers("/api/person/uid/**").permitAll()
+>>>>>>> c36c3e05 (updated personapi and security config)
                         // All other /api/person/** and /api/people/** operations handled by default rule
                         // ======================================================
 
@@ -147,7 +151,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/**").authenticated()
                         // ======================================================
                        
-                )
+                )     
+
                 .cors(Customizer.withDefaults())
                 .headers(headers -> headers
                         .addHeaderWriter(new StaticHeadersWriter("Access-Control-Allow-Credentials", "true"))

@@ -104,20 +104,7 @@ public class PersonApiController {
         return new ResponseEntity<>(HttpStatus.NOT_FOUND);
     }
     
-    /**
-     * Retrieves a Person entity by UID (for Flask-Spring user mapping).
-     * 
-     * @param uid The UID of the Person entity to retrieve.
-     * @return A ResponseEntity containing the Person entity if found, or NOT_FOUND.
-     */
-    @GetMapping("/person/uid/{uid}")
-    public ResponseEntity<Person> getPersonByUid(@PathVariable String uid) {
-        Person person = repository.findByUid(uid);
-        if (person != null) {
-            return new ResponseEntity<>(person, HttpStatus.OK);
-        }
-        return new ResponseEntity<>(HttpStatus.NOT_FOUND);
-    }
+    // Removed duplicate method to resolve the compile error.
     /**
      * Retrieves a Person entity by its UID.
      *

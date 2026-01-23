@@ -91,8 +91,6 @@ public class GroupsApiController {
         return groupMap;
     }
 
-    // ===== GET Operations =====
-
     @GetMapping
     @Transactional(readOnly = true)
     public ResponseEntity<List<Map<String, Object>>> getAllGroups() {
@@ -145,6 +143,89 @@ public class GroupsApiController {
             return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+
+@GetMapping("/{groupId}/members")
+@Transactional(readOnly = true)
+public ResponseEntity<List<Map<String, Object>>> getGroupMembers(@PathVariable Long groupId) {
+    try {
+        Optional<Groups> groupOpt = groupsRepository.findById(groupId);
+        if (groupOpt.isEmpty()) {
+            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+        }
+
+        List<Object[]> memberRows = groupsRepository.findGroupMembersRaw(groupId);
+        List<Map<String, Object>> membersList = new ArrayList<>();
+
+        for (Object[] row : memberRows) {
+            Map<String, Object> member = new LinkedHashMap<>();
+            member.put("id", ((Number) row[0]).longValue());
+            member.put("personId", ((Number) row[0]).longValue());
+            member.put("uid", (String) row[1]);
+            member.put("name", (String) row[2]);
+            member.put("email", (String) row[3]);
+            member.put("canPost", true);
+            member.put("role", "member");
+            membersList.add(member);
+        }
+
+        return new ResponseEntity<>(membersList, HttpStatus.OK);
+    } catch (Exception e) {
+        return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+}
+
+@GetMapping("/group/{groupId}")
+@Transactional(readOnly = true)
+public ResponseEntity<Map<String, Object>> getGroupInfo(@PathVariable Long groupId) {
+    try {
+        Optional<Groups> groupOpt = groupsRepository.findById(groupId);
+        if (groupOpt.isEmpty()) {
+            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+        }
+
+        Groups group = groupOpt.get();
+        Map<String, Object> groupInfo = new LinkedHashMap<>();
+        groupInfo.put("id", group.getId());
+        groupInfo.put("name", group.getName());
+        groupInfo.put("avatar", null);
+        groupInfo.put("period", group.getPeriod());
+        groupInfo.put("course", group.getCourse());
+
+        return new ResponseEntity<>(groupInfo, HttpStatus.OK);
+    } catch (Exception e) {
+        return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+}
+
+@GetMapping("/person/{personId}/groups")
+@Transactional(readOnly = true)
+public ResponseEntity<List<Map<String, Object>>> getPersonGroupsAlt(@PathVariable Long personId) {
+    try {
+        Optional<Person> personOpt = personRepository.findById(personId);
+        if (personOpt.isEmpty()) {
+            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+        }
+
+        List<Groups> groups = groupsRepository.findGroupsByPersonId(personId);
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (Groups group : groups) {
+            Map<String, Object> groupInfo = new LinkedHashMap<>();
+            groupInfo.put("id", group.getId());
+            groupInfo.put("name", group.getName());
+            groupInfo.put("avatar", null);
+            groupInfo.put("period", group.getPeriod());
+            groupInfo.put("course", group.getCourse());
+            groupInfo.put("canPost", true);
+            groupInfo.put("role", "member");
+            result.add(groupInfo);
+        }
+
+        return new ResponseEntity<>(result, HttpStatus.OK);
+    } catch (Exception e) {
+        return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+}
 
     @GetMapping("/search")
     @Transactional(readOnly = true)

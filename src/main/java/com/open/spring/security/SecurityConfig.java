@@ -77,6 +77,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/person/create").permitAll()
                         // Admin-only endpoints, beware of DELETE operations and impact to cascading relational data 
                         .requestMatchers(HttpMethod.DELETE, "/api/person/**").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/person/uid/**").hasAnyAuthority("ROLE_STUDENT", "ROLE_TEACHER", "ROLE_ADMIN")
+
                         // All other /api/person/** and /api/people/** operations handled by default rule
                         // ======================================================
 
@@ -92,6 +94,10 @@ public class SecurityConfig {
                         // ==========================================
                         .requestMatchers("/api/exports/**").hasAuthority("ROLE_ADMIN")
                         .requestMatchers("/api/imports/**").hasAuthority("ROLE_ADMIN")
+                        
+                        .requestMatchers("/api/content/**").hasAnyAuthority("ROLE_STUDENT", "ROLE_TEACHER", "ROLE_ADMIN")
+                        .requestMatchers("/api/collections/**").hasAnyAuthority("ROLE_STUDENT", "ROLE_TEACHER", "ROLE_ADMIN")
+                        .requestMatchers("/api/events/**").hasAnyAuthority("ROLE_STUDENT", "ROLE_TEACHER", "ROLE_ADMIN")
                         // ========== SYNERGY (ROLE-BASED ACCESS, Legacy system) ==========
                         // Specific endpoint with student/teacher/admin access
                         .requestMatchers(HttpMethod.POST, "/api/synergy/grades/requests").hasAnyAuthority("ROLE_STUDENT", "ROLE_TEACHER", "ROLE_ADMIN")
@@ -130,6 +136,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/sprint-dates/**").permitAll()
                         // User preferences - requires authentication (handled by default rule)
                         // ================================================================================
+
+                        // ========== OCS ANALYTICS ==========
+                        // OCS Analytics endpoints - require authentication to associate data with user
+                        .requestMatchers("/api/ocs-analytics/**").authenticated()
+                        // ===================================
 
                         // ========== DEFAULT: ALL OTHER API ENDPOINTS ==========
                         // Secure by default - any endpoint not explicitly listed above requires authentication

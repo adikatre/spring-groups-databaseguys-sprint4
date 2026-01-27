@@ -1,5 +1,6 @@
 package com.open.spring.security;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -8,7 +9,10 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.web.header.writers.StaticHeadersWriter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.cors.CorsConfigurationSource;
+
 
 /*
  * THIS FILE IS IMPORTANT
@@ -46,19 +50,14 @@ import org.springframework.security.web.header.writers.StaticHeadersWriter;
 @Configuration
 public class SecurityConfig {
 
-    private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
-    private final JwtRequestFilter jwtRequestFilter;
+    @Autowired
+    private JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
 
-    // Inject the RateLimitFilter
-    private final RateLimitFilter rateLimitFilter;
+    @Autowired
+    private JwtRequestFilter jwtRequestFilter;
 
-    public SecurityConfig(JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint,
-                          JwtRequestFilter jwtRequestFilter,
-                          RateLimitFilter rateLimitFilter) {
-        this.jwtAuthenticationEntryPoint = jwtAuthenticationEntryPoint;
-        this.jwtRequestFilter = jwtRequestFilter;
-        this.rateLimitFilter = rateLimitFilter; 
-    }
+    @Autowired
+    private RateLimitFilter rateLimitFilter;
 
     @Bean
     @Order(1)
@@ -66,6 +65,9 @@ public class SecurityConfig {
 
         http
                 .securityMatcher("/api/**", "/authenticate")
+                
+                .cors(Customizer.withDefaults())
+
                 // JWT related configuration
                 .csrf(csrf -> csrf.disable())
                 // .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) OBSOLETE, OVERWRITTEN BY BELOW
@@ -73,6 +75,7 @@ public class SecurityConfig {
 
                         // ========== AUTHENTICATION & USER MANAGEMENT ==========
                         // Public endpoints - no authentication required, support user login and account creation
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()  // Allow CORS preflight requests
                         .requestMatchers(HttpMethod.POST, "/authenticate").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/person/create").permitAll()
                         // Admin-only endpoints, beware of DELETE operations and impact to cascading relational data 
@@ -147,18 +150,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/**").authenticated()
                         // ======================================================
                        
-                )     
-
-                .cors(Customizer.withDefaults())
-                .headers(headers -> headers
-                        .addHeaderWriter(new StaticHeadersWriter("Access-Control-Allow-Credentials", "true"))
-                        .addHeaderWriter(
-                                new StaticHeadersWriter("Access-Control-Allow-ExposedHeaders", "*", "Authorization"))
-                        .addHeaderWriter(new StaticHeadersWriter("Access-Control-Allow-Headers", "Content-Type",
-                                "Authorization", "x-csrf-token"))
-                        .addHeaderWriter(new StaticHeadersWriter("Access-Control-Allow-MaxAge", "600"))
-                        .addHeaderWriter(new StaticHeadersWriter("Access-Control-Allow-Methods", "POST", "GET",
-                                "PUT", "DELETE", "OPTIONS", "HEAD")))
+                )
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(jwtAuthenticationEntryPoint))
 
@@ -169,4 +161,21 @@ public class SecurityConfig {
 
         return http.build();
     }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowCredentials(true);
+        configuration.addAllowedOriginPattern("http://localhost:4500");
+        configuration.addAllowedOriginPattern("https://opencodingsociety.com");
+        configuration.addAllowedOriginPattern("http://opencodingsociety.com");
+        configuration.addAllowedOriginPattern("https://pages.opencodingsociety.com");
+        configuration.addAllowedOriginPattern("https://spring.opencodingsociety.com");
+        configuration.addAllowedHeader("*");
+        configuration.addAllowedMethod("*");
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
+    }
+
 }

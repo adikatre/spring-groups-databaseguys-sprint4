@@ -66,6 +66,25 @@ public class GroupsApiController {
     public static class BulkGroupCreateDto {
         private List<GroupCreateDto> groups;
     }
+    
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class CreatePersonaGroupsDto {
+        private List<PersonaGroupDto> groups;  // Groups from Flask
+        private Double averageScore;            // Average score from Flask
+        private String period;                  // Class period
+        private String course;                  // Course name
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PersonaGroupDto {
+        private List<String> userUids;   // UIDs from Flask response (note: use userUids not user_uids for Java)
+        private Double teamScore;         // Team score from Flask
+    }
+    
 
     // ===== Helper Methods =====
     private Map<String, Object> buildGroupResponse(Groups group) {
@@ -662,6 +681,134 @@ public ResponseEntity<List<Map<String, Object>>> getPersonGroupsAlt(@PathVariabl
 
         grades.add(incoming); // insert
     }
+    @PostMapping("/create-persona-groups")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> createPersonaGroups(@RequestBody CreatePersonaGroupsDto dto) {
+        try {
+            // Validate input
+            if (dto.getGroups() == null || dto.getGroups().isEmpty()) {
+                return new ResponseEntity<>(
+                    Map.of("error", "No groups provided"),
+                    HttpStatus.BAD_REQUEST
+                );
+            }
 
+            String period = dto.getPeriod() != null ? dto.getPeriod() : "1";
+            String course = dto.getCourse() != null ? dto.getCourse() : "CSA";
+
+            // ===== Step 1: Build UID -> Person mapping =====
+            List<Person> allPersons = personRepository.findAll();
+            Map<String, Person> uidToPersonMap = new LinkedHashMap<>();
+            for (Person p : allPersons) {
+                uidToPersonMap.put(p.getUid(), p);
+            }
+
+            // ===== Step 2: Create groups in database =====
+            List<Map<String, Object>> createdGroups = new ArrayList<>();
+            List<String> errors = new ArrayList<>();
+            int groupNumber = 1;
+
+            for (PersonaGroupDto groupDto : dto.getGroups()) {
+                try {
+                    if (groupDto.getUserUids() == null || groupDto.getUserUids().isEmpty()) {
+                        errors.add("Group " + groupNumber + ": No members provided");
+                        groupNumber++;
+                        continue;
+                    }
+
+                    // Convert UIDs to Person IDs
+                    List<Long> memberIds = new ArrayList<>();
+                    List<String> notFoundUids = new ArrayList<>();
+                    
+                    for (String uid : groupDto.getUserUids()) {
+                        Person person = uidToPersonMap.get(uid);
+                        if (person != null) {
+                            memberIds.add(person.getId());
+                        } else {
+                            notFoundUids.add(uid);
+                        }
+                    }
+
+                    if (!notFoundUids.isEmpty()) {
+                        errors.add("Group " + groupNumber + ": Users not found: " + String.join(", ", notFoundUids));
+                    }
+
+                    if (memberIds.isEmpty()) {
+                        errors.add("Group " + groupNumber + ": No valid members found");
+                        groupNumber++;
+                        continue;
+                    }
+
+                    // Create the group
+                    Groups group = new Groups();
+                    group.setName("Group " + groupNumber);
+                    group.setPeriod(period);
+                    group.setCourse(course);
+
+                    Groups savedGroup = groupsRepository.save(group);
+
+                    // Add members to the group
+                    for (Long personId : memberIds) {
+                        groupsRepository.addPersonToGroupDirect(savedGroup.getId(), personId);
+                    }
+
+                    // Reload to get members
+                    savedGroup = groupsRepository.findById(savedGroup.getId()).orElse(savedGroup);
+
+                    // Build response
+                    Map<String, Object> groupResponse = buildGroupResponse(savedGroup);
+                    groupResponse.put("teamScore", groupDto.getTeamScore());
+                    groupResponse.put("compositionAnalysis", getCompositionAnalysis(groupDto.getTeamScore()));
+
+                    createdGroups.add(groupResponse);
+
+                } catch (Exception e) {
+                    errors.add("Group " + groupNumber + ": " + e.getMessage());
+                }
+
+                groupNumber++;
+            }
+
+            // ===== Step 3: Build response =====
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("success", true);
+            response.put("groupsCreated", createdGroups.size());
+            response.put("averageScore", dto.getAverageScore());
+            response.put("groups", createdGroups);
+            response.put("period", period);
+            response.put("course", course);
+            
+            if (!errors.isEmpty()) {
+                response.put("warnings", errors);
+            }
+
+            return new ResponseEntity<>(response, HttpStatus.CREATED);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return new ResponseEntity<>(
+                Map.of("error", "Error creating persona-based groups: " + e.getMessage()),
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    // Add this helper method to the Helper Methods section in GroupsApiController.java
+
+    private String getCompositionAnalysis(Double teamScore) {
+        if (teamScore == null) {
+            return "No score available";
+        }
+        
+        if (teamScore >= 80) {
+            return "Excellent - Highly balanced team with diverse student archetypes and aligned achievement goals";
+        } else if (teamScore >= 70) {
+            return "Good - Well-balanced team with complementary skills and interests";
+        } else if (teamScore >= 60) {
+            return "Fair - Moderately balanced team, may benefit from diversity in learning styles";
+        } else {
+            return "Needs improvement - Consider manual adjustments for better balance";
+        }
+    }
 
 }
